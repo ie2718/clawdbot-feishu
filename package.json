@@ -1,0 +1,71 @@
+{
+  "name": "@ie2718-clawdbot/feishu",
+  "version": "2026.1.27",
+  "type": "module",
+  "description": "Clawdbot Feishu (Lark) channel plugin - WebSocket-based messaging with markdown card support",
+  "keywords": [
+    "clawdbot",
+    "feishu",
+    "lark",
+    "bot",
+    "messaging",
+    "enterprise"
+  ],
+  "author": "ie2718",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ie2718/clawdbot-feishu.git"
+  },
+  "homepage": "https://github.com/ie2718/clawdbot-feishu#readme",
+  "bugs": {
+    "url": "https://github.com/ie2718/clawdbot-feishu/issues"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "clawdbot.plugin.json"
+  ],
+  "clawdbot": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "channel": {
+      "id": "feishu",
+      "label": "Feishu",
+      "selectionLabel": "Feishu (飞书/Lark)",
+      "docsPath": "/channels/feishu",
+      "docsLabel": "feishu",
+      "blurb": "Enterprise messaging platform with Bot API.",
+      "aliases": [
+        "lark",
+        "fs"
+      ],
+      "order": 81,
+      "quickstartAllowFrom": true
+    },
+    "install": {
+      "npmSpec": "@ie2718-clawdbot/feishu",
+      "defaultChoice": "npm"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.56.1"
+  },
+  "devDependencies": {
+    "clawdbot": ">=2026.1.24",
+    "typescript": "^5.7.3"
+  },
+  "peerDependencies": {
+    "clawdbot": ">=2026.1.24"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
