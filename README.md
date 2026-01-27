@@ -1,6 +1,12 @@
 # @ie2718/clawdbot-feishu
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 Feishu (飞书/Lark) channel plugin for [Clawdbot](https://github.com/clawdbot/clawdbot).
+
+## Demo
+
+![Demo Chat](docs/images/demo-chat.png)
 
 ## Features
 
@@ -49,15 +55,17 @@ In your app's "Permission Management", add these permissions:
 
 ### 4. Configure Credentials
 
-**Option A: Environment variables**
+**Option A: Clawdbot config**
 
 ```bash
-export FEISHU_APP_ID=cli_xxxxxxxxxx
-export FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxx
+clawdbot config set channels.feishu.enabled true
+clawdbot config set channels.feishu.appId "cli_xxxxxxxxxx"
+clawdbot config set channels.feishu.appSecret "xxxxxxxxxxxxxxxxxxxxxxxx"
 ```
 
-**Option B: Configuration file**
 
+**Option B: Configuration file**
+~/.clawdbot/clawdbot.json
 ```json5
 {
   channels: {
@@ -69,6 +77,14 @@ export FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxx
   }
 }
 ```
+
+**Option C: Environment variables**
+
+```bash
+export FEISHU_APP_ID=cli_xxxxxxxxxx
+export FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
 
 ### 5. Start Gateway
 
@@ -138,10 +154,19 @@ clawdbot channels status --probe
 | `open` | Anyone can message (requires `allowFrom: ["*"]`) |
 | `disabled` | DMs blocked |
 
-### Pairing Commands
+### Pairing Workflow
+
+When a new user sends a message to your bot with `dmPolicy: "pairing"` (default), they will receive a pairing code:
+
+![Pairing Code](docs/images/pairing-code.png)
+
+The bot owner can then approve access using the CLI:
 
 ```bash
+# List pending pairing requests
 clawdbot pairing list feishu
+
+# Approve a pairing request
 clawdbot pairing approve feishu <CODE>
 ```
 

@@ -1,6 +1,6 @@
 {
   "name": "@ie2718/clawdbot-feishu",
-  "version": "2026.1.27",
+  "version": "2026.1.26",
   "type": "module",
   "description": "Clawdbot Feishu (Lark) channel plugin - WebSocket-based messaging with markdown card support",
   "keywords": [
@@ -56,7 +56,6 @@
     "prepublishOnly": "npm run clean && npm run build"
   },
   "dependencies": {
-    "@ie2718/clawdbot-feishu": "^2026.1.27",
     "@larksuiteoapi/node-sdk": "^1.56.1"
   },
   "devDependencies": {
