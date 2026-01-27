@@ -53,16 +53,16 @@ export const feishuDock: ChannelDock = {
   },
   outbound: { textChunkLimit: 4000 },
   config: {
-    resolveAllowFrom: ({ cfg, accountId }) =>
+    resolveAllowFrom: ({ cfg, accountId }: { cfg: ClawdbotConfig; accountId: string }) =>
       (resolveFeishuAccount({ cfg: cfg as ClawdbotConfig, accountId }).config.allowFrom ?? []).map(
-        (entry) => String(entry),
+        (entry: string) => String(entry),
       ),
-    formatAllowFrom: ({ allowFrom }) =>
+    formatAllowFrom: ({ allowFrom }: { allowFrom: string[] }) =>
       allowFrom
-        .map((entry) => String(entry).trim())
+        .map((entry: string) => String(entry).trim())
         .filter(Boolean)
-        .map((entry) => entry.replace(/^(feishu|lark|fs):/i, ""))
-        .map((entry) => entry.toLowerCase()),
+        .map((entry: string) => entry.replace(/^(feishu|lark|fs):/i, ""))
+        .map((entry: string) => entry.toLowerCase()),
   },
   groups: {
     resolveRequireMention: () => true,
@@ -114,16 +114,16 @@ export const feishuPlugin: ChannelPlugin<ResolvedFeishuAccount> = {
       configured: Boolean(account.appId?.trim() && account.appSecret?.trim()),
       credentialSource: account.credentialSource,
     }),
-    resolveAllowFrom: ({ cfg, accountId }) =>
+    resolveAllowFrom: ({ cfg, accountId }: { cfg: ClawdbotConfig; accountId: string }) =>
       (resolveFeishuAccount({ cfg: cfg as ClawdbotConfig, accountId }).config.allowFrom ?? []).map(
-        (entry) => String(entry),
+        (entry: string) => String(entry),
       ),
-    formatAllowFrom: ({ allowFrom }) =>
+    formatAllowFrom: ({ allowFrom }: { allowFrom: string[] }) =>
       allowFrom
-        .map((entry) => String(entry).trim())
+        .map((entry: string) => String(entry).trim())
         .filter(Boolean)
-        .map((entry) => entry.replace(/^(feishu|lark|fs):/i, ""))
-        .map((entry) => entry.toLowerCase()),
+        .map((entry: string) => entry.replace(/^(feishu|lark|fs):/i, ""))
+        .map((entry: string) => entry.toLowerCase()),
   },
   security: {
     resolveDmPolicy: ({ cfg, accountId, account }) => {
@@ -164,31 +164,41 @@ export const feishuPlugin: ChannelPlugin<ResolvedFeishuAccount> = {
   },
   directory: {
     self: async () => null,
-    listPeers: async ({ cfg, accountId, query, limit }) => {
+    listPeers: async ({ cfg, accountId, query, limit }: {
+      cfg: ClawdbotConfig;
+      accountId: string;
+      query?: string;
+      limit?: number;
+    }) => {
       const account = resolveFeishuAccount({ cfg: cfg as ClawdbotConfig, accountId });
       const q = query?.trim().toLowerCase() || "";
-      const peers = Array.from(
+      const peers: Array<{ kind: string; id: string }> = Array.from(
         new Set(
           (account.config.allowFrom ?? [])
-            .map((entry) => String(entry).trim())
-            .filter((entry) => Boolean(entry) && entry !== "*")
-            .map((entry) => entry.replace(/^(feishu|lark|fs):/i, "")),
+            .map((entry: string) => String(entry).trim())
+            .filter((entry: string) => Boolean(entry) && entry !== "*")
+            .map((entry: string) => entry.replace(/^(feishu|lark|fs):/i, "")),
         ),
       )
-        .filter((id) => (q ? id.toLowerCase().includes(q) : true))
+        .filter((id: string) => (q ? id.toLowerCase().includes(q) : true))
         .slice(0, limit && limit > 0 ? limit : undefined)
-        .map((id) => ({ kind: "user", id }) as const);
+        .map((id: string) => ({ kind: "user" as string, id }));
       return peers;
     },
-    listGroups: async ({ cfg, accountId, query, limit }) => {
+    listGroups: async ({ cfg, accountId, query, limit }: {
+      cfg: ClawdbotConfig;
+      accountId: string;
+      query?: string;
+      limit?: number;
+    }) => {
       const account = resolveFeishuAccount({ cfg: cfg as ClawdbotConfig, accountId });
       const groups = account.config.groups ?? {};
       const q = query?.trim().toLowerCase() || "";
-      const entries = Object.keys(groups)
-        .filter((key) => key && key !== "*")
-        .filter((key) => (q ? key.toLowerCase().includes(q) : true))
+      const entries: Array<{ kind: string; id: string }> = Object.keys(groups)
+        .filter((key: string) => key && key !== "*")
+        .filter((key: string) => (q ? key.toLowerCase().includes(q) : true))
         .slice(0, limit && limit > 0 ? limit : undefined)
-        .map((id) => ({ kind: "group", id }) as const);
+        .map((id: string) => ({ kind: "group" as string, id }));
       return entries;
     },
   },
@@ -213,12 +223,16 @@ export const feishuPlugin: ChannelPlugin<ResolvedFeishuAccount> = {
       }
       return null;
     },
-    applyAccountConfig: ({ cfg, accountId, input }) => {
+    applyAccountConfig: ({ cfg, accountId, input }: {
+      cfg: ClawdbotConfig;
+      accountId: string;
+      input: Record<string, unknown>;
+    }) => {
       const namedConfig = applyAccountNameToChannelSection({
         cfg: cfg as ClawdbotConfig,
         channelKey: "feishu",
         accountId,
-        name: input.name,
+        name: input.name as string | undefined,
       });
       const next =
         accountId !== DEFAULT_ACCOUNT_ID
@@ -362,7 +376,10 @@ export const feishuPlugin: ChannelPlugin<ResolvedFeishuAccount> = {
     }),
     probeAccount: async ({ account, timeoutMs }) =>
       probeFeishu(account.appId, account.appSecret, timeoutMs),
-    buildAccountSnapshot: ({ account, runtime }) => {
+    buildAccountSnapshot: ({ account, runtime }: {
+      account: ResolvedFeishuAccount;
+      runtime?: { running?: boolean; lastStartAt?: number | null; lastStopAt?: number | null; lastError?: string | null; lastInboundAt?: number | null; lastOutboundAt?: number | null };
+    }) => {
       const configured = Boolean(account.appId?.trim() && account.appSecret?.trim());
       return {
         accountId: account.accountId,

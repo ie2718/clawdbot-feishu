@@ -74,7 +74,7 @@ async function promptFeishuAllowFrom(params: {
   });
   const normalized = String(entry).trim();
   const merged = [
-    ...existingAllowFrom.map((item) => String(item).trim()).filter(Boolean),
+    ...existingAllowFrom.map((item: string) => String(item).trim()).filter(Boolean),
     normalized,
   ];
   const unique = [...new Set(merged)];
@@ -105,7 +105,7 @@ async function promptFeishuAllowFrom(params: {
           ...(cfg.channels?.feishu?.accounts ?? {}),
           [accountId]: {
             ...(cfg.channels?.feishu?.accounts?.[accountId] ?? {}),
-            enabled: cfg.channels?.feishu?.accounts?.[accountId]?.enabled ?? true,
+            enabled: (cfg.channels?.feishu?.accounts as Record<string, { enabled?: boolean }> | undefined)?.[accountId]?.enabled ?? true,
             dmPolicy: "allowlist",
             allowFrom: unique,
           },

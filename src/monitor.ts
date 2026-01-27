@@ -28,6 +28,8 @@ export type FeishuMonitorOptions = {
   config: ClawdbotConfig;
   runtime: FeishuRuntimeEnv;
   abortSignal: AbortSignal;
+  /** Custom webhook path for receiving events. */
+  webhookPath?: string;
   statusSink?: (patch: { lastInboundAt?: number; lastOutboundAt?: number }) => void;
 };
 
@@ -293,9 +295,9 @@ async function processMessageEvent(
 
   await core.channel.session.recordInboundSession({
     storePath,
-    sessionKey: ctxPayload.SessionKey ?? route.sessionKey,
+    sessionKey: (ctxPayload.SessionKey as string) ?? route.sessionKey,
     ctx: ctxPayload,
-    onRecordError: (err) => {
+    onRecordError: (err: unknown) => {
       runtime.error?.(`feishu: failed updating session meta: ${String(err)}`);
     },
   });

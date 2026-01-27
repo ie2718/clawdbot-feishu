@@ -2,6 +2,7 @@ import type { ClawdbotConfig } from "clawdbot/plugin-sdk";
 import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "clawdbot/plugin-sdk";
 
 import type { FeishuAccountConfig, FeishuConfig, ResolvedFeishuAccount } from "./types.js";
+export type { ResolvedFeishuAccount } from "./types.js";
 import { resolveFeishuCredentials } from "./token.js";
 
 function listConfiguredAccountIds(cfg: ClawdbotConfig): string[] {

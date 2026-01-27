@@ -1,4 +1,4 @@
-# @ie2718-clawdbot/feishu
+# @ie2718/clawdbot-feishu
 
 Feishu (飞书/Lark) channel plugin for [Clawdbot](https://github.com/clawdbot/clawdbot).
 
@@ -13,10 +13,10 @@ Feishu (飞书/Lark) channel plugin for [Clawdbot](https://github.com/clawdbot/c
 
 ```bash
 # Via Clawdbot CLI
-clawdbot plugins install @ie2718-clawdbot/feishu
+clawdbot plugins install @ie2718/clawdbot-feishu
 
 # Or via npm
-npm install @ie2718-clawdbot/feishu
+npm install @ie2718/clawdbot-feishu
 ```
 
 ## Quick Start

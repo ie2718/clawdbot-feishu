@@ -1,17 +1,8 @@
-import type { ChannelStatusIssue } from "clawdbot/plugin-sdk";
+import type { ChannelAccountSnapshot, ChannelStatusIssue } from "clawdbot/plugin-sdk";
 import { DEFAULT_ACCOUNT_ID } from "clawdbot/plugin-sdk";
 
-type FeishuAccountSnapshot = {
-  accountId?: string;
-  enabled?: boolean;
-  configured?: boolean;
-  credentialSource?: string;
-  verificationToken?: string;
-  webhookPath?: string;
-};
-
 export function collectFeishuStatusIssues(
-  accounts: FeishuAccountSnapshot[],
+  accounts: ChannelAccountSnapshot[],
 ): ChannelStatusIssue[] {
   const issues: ChannelStatusIssue[] = [];
 

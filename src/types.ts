@@ -10,6 +10,12 @@ export type FeishuAccountConfig = {
   appSecret?: string;
   /** Path to file containing the app secret. */
   appSecretFile?: string;
+  /** Encrypt key for event decryption (from Events and Callbacks page). */
+  encryptKey?: string;
+  /** Verification token for webhook validation (from Events and Callbacks page). */
+  verificationToken?: string;
+  /** Custom webhook path for receiving events. */
+  webhookPath?: string;
   /** Direct message access policy (default: pairing). */
   dmPolicy?: "pairing" | "allowlist" | "open" | "disabled";
   /** Allowlist for DM senders (Feishu open_id or user_id). */

@@ -1,0 +1,96 @@
+# Source files (we ship compiled JS in dist/)
+*.ts
+!*.d.ts
+src/
+index.ts
+
+# TypeScript configuration
+tsconfig.json
+tsconfig.*.json
+
+# Test files
+*.test.ts
+*.spec.ts
+__tests__/
+test/
+tests/
+coverage/
+.nyc_output/
+
+# Development dependencies and tools
+node_modules/
+.eslintrc*
+.eslintignore
+.prettierrc*
+.prettierignore
+.editorconfig
+biome.json
+
+# Build tools
+Makefile
+Gruntfile.js
+Gulpfile.js
+rollup.config.*
+webpack.config.*
+vite.config.*
+esbuild.config.*
+
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+.project
+.classpath
+.settings/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Git
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# npm
+*.tgz
+.npmrc
+package-lock.json
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Environment and secrets
+.env
+.env.*
+*.local
+
+# Documentation source (README.md is auto-included)
+docs/
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+
+# CI/CD
+.travis.yml
+.circleci/
+.gitlab-ci.yml
+azure-pipelines.yml
+Jenkinsfile
+.github/
+
+# Misc
+*.bak
+*.tmp
+*.temp
+.cache/
