@@ -11,6 +11,8 @@ export type FeishuSendOptions = {
   cfg?: ClawdbotConfig;
   receiveIdType?: FeishuReceiveIdType;
   replyToMessageId?: string;
+  /** Sender's user ID (open_id, user_id, or union_id) to @mention when replying */
+  mentionUserId?: string;
   mediaUrl?: string;
   verbose?: boolean;
   fetch?: FeishuFetch;
@@ -64,8 +66,18 @@ function inferReceiveIdType(target: string): FeishuReceiveIdType {
 /**
  * Build a Feishu interactive card with markdown content.
  * Card messages support rich markdown formatting in Feishu.
+ * @param content - The markdown content to display
+ * @param mentionUserId - Optional user ID to @mention at the beginning of the message
  */
-function buildMarkdownCard(content: string): string {
+function buildMarkdownCard(content: string, mentionUserId?: string): string {
+  // Build the markdown content with optional @mention
+  // Feishu @mention syntax: <at id=user_id></at>
+  let markdownContent = content;
+  if (mentionUserId?.trim()) {
+    // Add @mention at the beginning of the message
+    markdownContent = `<at id=${mentionUserId}></at> ${content}`;
+  }
+
   const card = {
     config: {
       wide_screen_mode: true,
@@ -74,7 +86,7 @@ function buildMarkdownCard(content: string): string {
     elements: [
       {
         tag: "markdown",
-        content,
+        content: markdownContent,
       },
     ],
   };
@@ -103,7 +115,8 @@ export async function sendMessageFeishu(
   const receiveIdType = options.receiveIdType ?? inferReceiveIdType(to);
 
   // Build interactive card message content for markdown support
-  const content = buildMarkdownCard(text);
+  // Include @mention when replying to a specific message
+  const content = buildMarkdownCard(text, options.replyToMessageId ? options.mentionUserId : undefined);
 
   try {
     // If replying to a specific message

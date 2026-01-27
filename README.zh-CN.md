@@ -25,6 +25,12 @@ clawdbot plugins install @ie2718/clawdbot-feishu
 npm install @ie2718/clawdbot-feishu
 ```
 
+安装过程中，交互式配置向导会引导你完成配置：
+
+![安装提示](docs/images/install-prompt.png)
+
+向导会提示你输入飞书 App ID 和 App Secret，并自动保存到配置文件。
+
 ## 快速开始
 
 ### 1. 创建飞书应用
@@ -53,7 +59,21 @@ npm install @ie2718/clawdbot-feishu
 3. 添加事件：`im.message.receive_v1`（接收消息）
 4. 点击保存
 
-### 4. 配置凭证
+### 4. 安装插件并配置凭证
+
+```bash
+clawdbot plugins install @ie2718/clawdbot-feishu
+```
+
+交互式配置向导会提示你输入：
+- **App ID**：你的飞书 App ID（如 `cli_xxxxxxxxxx`）
+- **App Secret**：你的飞书 App Secret
+
+如果之前已配置过凭证，向导会询问是否保留现有配置。
+
+**其他配置方式**
+
+如果你偏好手动配置：
 
 **方式 A：Clawdbot 配置命令**
 
@@ -85,6 +105,15 @@ export FEISHU_APP_ID=cli_xxxxxxxxxx
 export FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
+**方式 D：交互式引导配置**
+
+```bash
+clawdbot onboard
+```
+
+引导向导会引导你完成配置：
+
+![引导配置](docs/images/onboard-prompt.png)
 
 ### 5. 启动网关
 
@@ -172,7 +201,7 @@ clawdbot pairing approve feishu <CODE>
 
 ## 文档
 
-完整文档：https://docs.clawd.bot/channels/feishu
+完整文档：https://docs.clawd.bot
 
 ## 许可证
 

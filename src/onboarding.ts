@@ -44,9 +44,8 @@ async function noteFeishuCredentialsHelp(prompter: WizardPrompter): Promise<void
       "2) Create an enterprise self-built application",
       "3) Add bot capability and configure permissions",
       "4) Get App ID and App Secret from Credentials page",
-      "5) Configure event subscription with your webhook URL",
+      "5) Set event subscription to 'Long Connection' (WebSocket)",
       "Tip: you can also set FEISHU_APP_ID and FEISHU_APP_SECRET in your env.",
-      "Docs: https://docs.clawd.bot/channels/feishu",
     ].join("\n"),
     "Feishu app credentials",
   );
@@ -74,7 +73,7 @@ async function promptFeishuAllowFrom(params: {
   });
   const normalized = String(entry).trim();
   const merged = [
-    ...existingAllowFrom.map((item: string) => String(item).trim()).filter(Boolean),
+    ...existingAllowFrom.map((item) => String(item).trim()).filter(Boolean),
     normalized,
   ];
   const unique = [...new Set(merged)];
@@ -151,7 +150,7 @@ export const feishuOnboardingAdapter: ChannelOnboardingAdapter = {
       quickstartScore: configured ? 1 : 8,
     };
   },
-  configure: async ({ cfg, prompter, accountOverrides, shouldPromptAccountIds, forceAllowFrom }) => {
+  configure: async ({ cfg, prompter, accountOverrides, shouldPromptAccountIds }) => {
     const feishuOverride = accountOverrides.feishu?.trim();
     const defaultFeishuAccountId = resolveDefaultFeishuAccountId(cfg as ClawdbotConfig);
     let feishuAccountId = feishuOverride
@@ -186,73 +185,87 @@ export const feishuOnboardingAdapter: ChannelOnboardingAdapter = {
     if (!accountConfigured) {
       await noteFeishuCredentialsHelp(prompter);
     }
-    if (canUseEnv && !resolvedAccount.config.appId) {
+    // Determine credential source and prompt accordingly
+    const envAppId = process.env.FEISHU_APP_ID?.trim() || "";
+    const envAppSecret = process.env.FEISHU_APP_SECRET?.trim() || "";
+    const configAppId = resolvedAccount.config.appId?.trim() || "";
+    const configAppSecret = resolvedAccount.config.appSecret?.trim() || "";
+
+    if (canUseEnv && !configAppId) {
+      // Env vars available and no config - ask if user wants to use env vars
       const keepEnv = await prompter.confirm({
-        message: "FEISHU_APP_ID/FEISHU_APP_SECRET detected. Use env vars?",
+        message: `FEISHU_APP_ID (${envAppId.slice(0, 8)}...) detected. Use env vars?`,
         initialValue: true,
       });
-      if (keepEnv) {
-        next = {
-          ...next,
-          channels: {
-            ...next.channels,
-            feishu: {
-              ...next.channels?.feishu,
-              enabled: true,
-            },
-          },
-        } as ClawdbotConfig;
-      } else {
+      if (!keepEnv) {
+        // User wants to enter custom credentials
         appId = String(
           await prompter.text({
             message: "Enter Feishu App ID",
             placeholder: "cli_xxxxxxxxxx",
+            initialValue: envAppId,
             validate: (value) => (value?.trim() ? undefined : "Required"),
           }),
         ).trim();
         appSecret = String(
           await prompter.text({
             message: "Enter Feishu App Secret",
+            initialValue: envAppSecret,
             validate: (value) => (value?.trim() ? undefined : "Required"),
           }),
         ).trim();
       }
-    } else if (hasConfigCredentials) {
-      const keep = await prompter.confirm({
-        message: "Feishu credentials already configured. Keep them?",
-        initialValue: true,
-      });
-      if (!keep) {
-        appId = String(
-          await prompter.text({
-            message: "Enter Feishu App ID",
-            placeholder: "cli_xxxxxxxxxx",
-            validate: (value) => (value?.trim() ? undefined : "Required"),
-          }),
-        ).trim();
-        appSecret = String(
-          await prompter.text({
-            message: "Enter Feishu App Secret",
-            validate: (value) => (value?.trim() ? undefined : "Required"),
-          }),
-        ).trim();
-      }
+      // If keepEnv is true, appId/appSecret remain null, which means use env vars
     } else {
+      // Either no env vars or config already has credentials - always prompt with existing values
       appId = String(
         await prompter.text({
           message: "Enter Feishu App ID",
           placeholder: "cli_xxxxxxxxxx",
+          initialValue: configAppId || envAppId || undefined,
           validate: (value) => (value?.trim() ? undefined : "Required"),
         }),
       ).trim();
       appSecret = String(
         await prompter.text({
           message: "Enter Feishu App Secret",
+          initialValue: configAppSecret || envAppSecret || undefined,
           validate: (value) => (value?.trim() ? undefined : "Required"),
         }),
       ).trim();
     }
 
+    // Prompt for DM policy
+    const selectedDmPolicy = (await prompter.select({
+      message: "Select DM access policy",
+      options: [
+        { value: "open", label: "open - Anyone can message the bot" },
+        { value: "allowlist", label: "allowlist - Only specific users can message" },
+        { value: "pairing", label: "pairing - Users need approval to message" },
+        { value: "disabled", label: "disabled - Disable DM" },
+      ],
+      initialValue: resolvedAccount.config.dmPolicy ?? "open",
+    })) as "open" | "allowlist" | "pairing" | "disabled";
+
+    // If allowlist is selected, prompt for allowFrom
+    let allowFrom: string[] | undefined;
+    if (selectedDmPolicy === "allowlist") {
+      const existingAllowFrom = resolvedAccount.config.allowFrom ?? [];
+      const allowFromInput = String(
+        await prompter.text({
+          message: "Enter allowed user IDs (comma-separated, e.g., ou_xxx,ou_yyy)",
+          placeholder: "ou_xxxxxxxxxx",
+          initialValue: existingAllowFrom.length > 0 ? existingAllowFrom.join(",") : undefined,
+          validate: (value) => (value?.trim() ? undefined : "Required for allowlist policy"),
+        }),
+      ).trim();
+      allowFrom = allowFromInput
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    // Build the final config
     if (appId && appSecret) {
       if (feishuAccountId === DEFAULT_ACCOUNT_ID) {
         next = {
@@ -264,6 +277,8 @@ export const feishuOnboardingAdapter: ChannelOnboardingAdapter = {
               enabled: true,
               appId,
               appSecret,
+              dmPolicy: selectedDmPolicy,
+              ...(allowFrom ? { allowFrom } : {}),
             },
           },
         } as ClawdbotConfig;
@@ -282,39 +297,16 @@ export const feishuOnboardingAdapter: ChannelOnboardingAdapter = {
                   enabled: true,
                   appId,
                   appSecret,
+                  dmPolicy: selectedDmPolicy,
+                  ...(allowFrom ? { allowFrom } : {}),
                 },
               },
             },
           },
         } as ClawdbotConfig;
       }
-    }
-
-    // Prompt for webhook configuration
-    const wantsWebhook = await prompter.confirm({
-      message: "Configure webhook settings? (needed for receiving messages)",
-      initialValue: true,
-    });
-    if (wantsWebhook) {
-      const encryptKey = String(
-        await prompter.text({
-          message: "Encrypt Key (from Events and Callbacks page, optional)",
-          placeholder: "Leave empty if not using encryption",
-        }),
-      ).trim();
-      const verificationToken = String(
-        await prompter.text({
-          message: "Verification Token (from Events and Callbacks page)",
-          validate: (value) => (value?.trim() ? undefined : "Required for webhook verification"),
-        }),
-      ).trim();
-      const webhookPath = String(
-        await prompter.text({
-          message: "Webhook path on gateway",
-          initialValue: "/feishu/callback",
-        }),
-      ).trim();
-
+    } else {
+      // Using env vars - still need to set dmPolicy
       if (feishuAccountId === DEFAULT_ACCOUNT_ID) {
         next = {
           ...next,
@@ -322,9 +314,9 @@ export const feishuOnboardingAdapter: ChannelOnboardingAdapter = {
             ...next.channels,
             feishu: {
               ...next.channels?.feishu,
-              ...(encryptKey ? { encryptKey } : {}),
-              ...(verificationToken ? { verificationToken } : {}),
-              ...(webhookPath ? { webhookPath } : {}),
+              enabled: true,
+              dmPolicy: selectedDmPolicy,
+              ...(allowFrom ? { allowFrom } : {}),
             },
           },
         } as ClawdbotConfig;
@@ -335,13 +327,14 @@ export const feishuOnboardingAdapter: ChannelOnboardingAdapter = {
             ...next.channels,
             feishu: {
               ...next.channels?.feishu,
+              enabled: true,
               accounts: {
                 ...(next.channels?.feishu?.accounts ?? {}),
                 [feishuAccountId]: {
                   ...(next.channels?.feishu?.accounts?.[feishuAccountId] ?? {}),
-                  ...(encryptKey ? { encryptKey } : {}),
-                  ...(verificationToken ? { verificationToken } : {}),
-                  ...(webhookPath ? { webhookPath } : {}),
+                  enabled: true,
+                  dmPolicy: selectedDmPolicy,
+                  ...(allowFrom ? { allowFrom } : {}),
                 },
               },
             },
@@ -350,13 +343,7 @@ export const feishuOnboardingAdapter: ChannelOnboardingAdapter = {
       }
     }
 
-    if (forceAllowFrom) {
-      next = await promptFeishuAllowFrom({
-        cfg: next,
-        prompter,
-        accountId: feishuAccountId,
-      });
-    }
+    // WebSocket mode - no webhook configuration needed
 
     return { cfg: next, accountId: feishuAccountId };
   },

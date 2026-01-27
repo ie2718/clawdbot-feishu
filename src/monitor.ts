@@ -15,7 +15,7 @@ import type {
   FeishuReceiveIdType,
   ResolvedFeishuAccount,
 } from "./types.js";
-import { sendMessage } from "./api.js";
+import { sendMessage, replyMessage } from "./api.js";
 import { getFeishuRuntime } from "./runtime.js";
 
 export type FeishuRuntimeEnv = {
@@ -44,8 +44,18 @@ const DEFAULT_MEDIA_MAX_MB = 20;
 /**
  * Build a Feishu interactive card with markdown content.
  * Card messages support rich markdown formatting in Feishu.
+ * @param content - The markdown content to display
+ * @param mentionUserId - Optional user ID to @mention at the beginning of the message
  */
-function buildMarkdownCard(content: string): string {
+function buildMarkdownCard(content: string, mentionUserId?: string): string {
+  // Build the markdown content with optional @mention
+  // Feishu @mention syntax: <at id=user_id></at>
+  let markdownContent = content;
+  if (mentionUserId?.trim()) {
+    // Add @mention at the beginning of the message
+    markdownContent = `<at id=${mentionUserId}></at> ${content}`;
+  }
+
   const card = {
     config: {
       wide_screen_mode: true,
@@ -54,7 +64,7 @@ function buildMarkdownCard(content: string): string {
     elements: [
       {
         tag: "markdown",
-        content,
+        content: markdownContent,
       },
     ],
   };
@@ -318,6 +328,8 @@ async function processMessageEvent(
           account,
           receiveId: replyTarget.id,
           receiveIdType: replyTarget.type,
+          senderId,
+          replyToMessageId: messageId,
           runtime,
           core,
           config,
@@ -337,13 +349,17 @@ async function deliverFeishuReply(params: {
   account: ResolvedFeishuAccount;
   receiveId: string;
   receiveIdType: FeishuReceiveIdType;
+  /** Sender's user ID for @mention in replies */
+  senderId?: string;
+  /** Original message ID to reply to (for quote/reference) */
+  replyToMessageId?: string;
   runtime: FeishuRuntimeEnv;
   core: FeishuCoreRuntime;
   config: ClawdbotConfig;
   statusSink?: (patch: { lastInboundAt?: number; lastOutboundAt?: number }) => void;
   tableMode?: MarkdownTableMode;
 }): Promise<void> {
-  const { payload, account, receiveId, receiveIdType, runtime, core, config, statusSink } = params;
+  const { payload, account, receiveId, receiveIdType, senderId, replyToMessageId, runtime, core, config, statusSink } = params;
   const tableMode = params.tableMode ?? "code";
   const text = core.channel.text.convertMarkdownTables(payload.text ?? "", tableMode);
 
@@ -354,19 +370,39 @@ async function deliverFeishuReply(params: {
       FEISHU_CARD_CONTENT_LIMIT,
       chunkMode,
     );
-    for (const chunk of chunks) {
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
       try {
         // Send as interactive card message with markdown support
-        await sendMessage(
-          account.appId,
-          account.appSecret,
-          {
-            receive_id: receiveId,
-            msg_type: "interactive",
-            content: buildMarkdownCard(chunk),
-          },
-          receiveIdType,
-        );
+        // Only @mention the sender in the first chunk to avoid spam
+        const mentionUserId = i === 0 ? senderId : undefined;
+        const content = buildMarkdownCard(chunk, mentionUserId);
+
+        // Use replyMessage for the first chunk to show quote, sendMessage for subsequent chunks
+        if (i === 0 && replyToMessageId) {
+          // Reply to original message - this shows the quoted content in Feishu
+          await replyMessage(
+            account.appId,
+            account.appSecret,
+            replyToMessageId,
+            {
+              msg_type: "interactive",
+              content,
+            },
+          );
+        } else {
+          // Send as new message for subsequent chunks
+          await sendMessage(
+            account.appId,
+            account.appSecret,
+            {
+              receive_id: receiveId,
+              msg_type: "interactive",
+              content,
+            },
+            receiveIdType,
+          );
+        }
         statusSink?.({ lastOutboundAt: Date.now() });
       } catch (err) {
         runtime.error?.(`[feishu] message send failed: ${String(err)}`);

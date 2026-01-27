@@ -25,6 +25,12 @@ clawdbot plugins install @ie2718/clawdbot-feishu
 npm install @ie2718/clawdbot-feishu
 ```
 
+During installation, an interactive setup wizard will guide you through the configuration:
+
+![Install Prompt](docs/images/install-prompt.png)
+
+The wizard will prompt you to enter your Feishu App ID and App Secret, automatically saving them to your configuration.
+
 ## Quick Start
 
 ### 1. Create a Feishu App
@@ -53,7 +59,21 @@ In your app's "Permission Management", add these permissions:
 3. Add event: `im.message.receive_v1` (Receive messages)
 4. Click Save
 
-### 4. Configure Credentials
+### 4. Install Plugin and Configure Credentials
+
+```bash
+clawdbot plugins install @ie2718/clawdbot-feishu
+```
+
+The interactive setup wizard will prompt you to enter:
+- **App ID**: Your Feishu App ID (e.g., `cli_xxxxxxxxxx`)
+- **App Secret**: Your Feishu App Secret
+
+If you've already configured credentials, the wizard will ask if you want to keep them.
+
+**Alternative Configuration Methods**
+
+If you prefer manual configuration:
 
 **Option A: Clawdbot config**
 
@@ -85,6 +105,15 @@ export FEISHU_APP_ID=cli_xxxxxxxxxx
 export FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
+**Option D: Interactive onboarding**
+
+```bash
+clawdbot onboard
+```
+
+The onboarding wizard will guide you through the configuration:
+
+![Onboard Prompt](docs/images/onboard-prompt.png)
 
 ### 5. Start Gateway
 
@@ -172,8 +201,7 @@ clawdbot pairing approve feishu <CODE>
 
 ## Documentation
 
-Full documentation: https://docs.clawd.bot/channels/feishu
-
+Full documentation: https://docs.clawd.bot
 ## License
 
 MIT
