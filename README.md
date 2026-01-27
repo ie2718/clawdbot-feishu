@@ -6,7 +6,7 @@ Feishu (飞书/Lark) channel plugin for [Clawdbot](https://github.com/clawdbot/c
 
 ## Demo
 
-![Demo Chat](docs/images/demo-chat.png)
+![Demo Chat](resource/images/demo-chat.png)
 
 ## Features
 
@@ -27,7 +27,7 @@ npm install @ie2718/clawdbot-feishu
 
 During installation, an interactive setup wizard will guide you through the configuration:
 
-![Install Prompt](docs/images/install-prompt.png)
+![Install Prompt](resource/images/install-prompt.png)
 
 The wizard will prompt you to enter your Feishu App ID and App Secret, automatically saving them to your configuration.
 
@@ -113,7 +113,7 @@ clawdbot onboard
 
 The onboarding wizard will guide you through the configuration:
 
-![Onboard Prompt](docs/images/onboard-prompt.png)
+![Onboard Prompt](resource/images/onboard-prompt.png)
 
 ### 5. Start Gateway
 
@@ -187,7 +187,7 @@ clawdbot channels status --probe
 
 When a new user sends a message to your bot with `dmPolicy: "pairing"` (default), they will receive a pairing code:
 
-![Pairing Code](docs/images/pairing-code.png)
+![Pairing Code](resource/images/pairing-code.png)
 
 The bot owner can then approve access using the CLI:
 
@@ -201,7 +201,7 @@ clawdbot pairing approve feishu <CODE>
 
 ## Documentation
 
-Full documentation: https://docs.clawd.bot
+Full documentation: https://resource.clawd.bot
 ## License
 
 MIT

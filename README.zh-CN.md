@@ -6,7 +6,7 @@
 
 ## 演示
 
-![演示对话](docs/images/demo-chat.png)
+![演示对话](resource/images/demo-chat.png)
 
 ## 功能特性
 
@@ -24,12 +24,6 @@ clawdbot plugins install @ie2718/clawdbot-feishu
 # 或通过 npm
 npm install @ie2718/clawdbot-feishu
 ```
-
-安装过程中，交互式配置向导会引导你完成配置：
-
-![安装提示](docs/images/install-prompt.png)
-
-向导会提示你输入飞书 App ID 和 App Secret，并自动保存到配置文件。
 
 ## 快速开始
 
@@ -113,7 +107,7 @@ clawdbot onboard
 
 引导向导会引导你完成配置：
 
-![引导配置](docs/images/onboard-prompt.png)
+![引导配置](resource/images/onboard-prompt.png)
 
 ### 5. 启动网关
 
@@ -187,7 +181,7 @@ clawdbot channels status --probe
 
 当新用户在 `dmPolicy: "pairing"`（默认）模式下向机器人发送消息时，会收到一个配对码：
 
-![配对码](docs/images/pairing-code.png)
+![配对码](resource/images/pairing-code.png)
 
 机器人管理员可以通过 CLI 批准访问：
 
@@ -201,7 +195,7 @@ clawdbot pairing approve feishu <CODE>
 
 ## 文档
 
-完整文档：https://docs.clawd.bot
+完整文档：https://resource.clawd.bot
 
 ## 许可证
 
