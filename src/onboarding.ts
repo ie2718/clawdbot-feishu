@@ -138,16 +138,23 @@ export const feishuOnboardingAdapter: ChannelOnboardingAdapter = {
   channel,
   dmPolicy,
   getStatus: async ({ cfg }) => {
-    const configured = listFeishuAccountIds(cfg as ClawdbotConfig).some((accountId) => {
+    // Check if credentials are configured in the config file (not just env vars)
+    // This ensures the configure prompts are shown even when env vars are set
+    const configuredInFile = listFeishuAccountIds(cfg as ClawdbotConfig).some((accountId) => {
+      const account = resolveFeishuAccount({ cfg: cfg as ClawdbotConfig, accountId });
+      // Only consider configured if credentials are in the config file
+      return Boolean(account.config.appId?.trim() && (account.config.appSecret?.trim() || account.config.appSecretFile?.trim()));
+    });
+    const hasCredentials = listFeishuAccountIds(cfg as ClawdbotConfig).some((accountId) => {
       const account = resolveFeishuAccount({ cfg: cfg as ClawdbotConfig, accountId });
       return Boolean(account.appId && account.appSecret);
     });
     return {
       channel,
-      configured,
-      statusLines: [`Feishu: ${configured ? "configured" : "needs credentials"}`],
-      selectionHint: configured ? "recommended · configured" : "recommended · enterprise-ready",
-      quickstartScore: configured ? 1 : 8,
+      configured: configuredInFile,
+      statusLines: [`Feishu: ${hasCredentials ? "configured" : "needs credentials"}`],
+      selectionHint: hasCredentials ? "recommended · configured" : "recommended · enterprise-ready",
+      quickstartScore: configuredInFile ? 1 : 8,
     };
   },
   configure: async ({ cfg, prompter, accountOverrides, shouldPromptAccountIds }) => {
@@ -175,16 +182,15 @@ export const feishuOnboardingAdapter: ChannelOnboardingAdapter = {
       allowEnv &&
       Boolean(process.env.FEISHU_APP_ID?.trim()) &&
       Boolean(process.env.FEISHU_APP_SECRET?.trim());
-    const hasConfigCredentials = Boolean(
-      resolvedAccount.config.appId && (resolvedAccount.config.appSecret || resolvedAccount.config.appSecretFile),
-    );
 
     let appId: string | null = null;
     let appSecret: string | null = null;
 
+    // Always show credential help for new users
     if (!accountConfigured) {
       await noteFeishuCredentialsHelp(prompter);
     }
+
     // Determine credential source and prompt accordingly
     const envAppId = process.env.FEISHU_APP_ID?.trim() || "";
     const envAppSecret = process.env.FEISHU_APP_SECRET?.trim() || "";
@@ -217,7 +223,8 @@ export const feishuOnboardingAdapter: ChannelOnboardingAdapter = {
       }
       // If keepEnv is true, appId/appSecret remain null, which means use env vars
     } else {
-      // Either no env vars or config already has credentials - always prompt with existing values
+      // Always prompt for credentials - either no env vars or config already has credentials
+      // This ensures prompts are shown even when reinstalling the plugin
       appId = String(
         await prompter.text({
           message: "Enter Feishu App ID",

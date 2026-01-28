@@ -29,7 +29,7 @@ import { collectFeishuStatusIssues } from "./status-issues.js";
 const meta = {
   id: "feishu",
   label: "Feishu",
-  selectionLabel: "Feishu (飞书/Lark)",
+  selectionLabel: "Feishu (飞书)",
   docsPath: "/channels/feishu",
   docsLabel: "feishu",
   blurb: "Enterprise messaging platform with Bot API.",

@@ -56,7 +56,7 @@ npm install @ie2718/clawdbot-feishu
 ### 4. 安装插件并配置凭证
 
 ```bash
-clawdbot plugins install @ie2718/clawdbot-feishu
+clawdbot plugins install @ie2718-moltbot/feishu
 ```
 
 交互式配置向导会提示你输入：

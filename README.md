@@ -62,7 +62,7 @@ In your app's "Permission Management", add these permissions:
 ### 4. Install Plugin and Configure Credentials
 
 ```bash
-clawdbot plugins install @ie2718/clawdbot-feishu
+clawdbot plugins install @ie2718-moltbot/feishu
 ```
 
 The interactive setup wizard will prompt you to enter:

@@ -1,6 +1,6 @@
 {
-  "name": "@ie2718/clawdbot-feishu",
-  "version": "0.0.3",
+  "name": "@ie2718-moltbot/feishu",
+  "version": "0.0.1",
   "type": "module",
   "description": "Clawdbot Feishu (Lark) channel plugin - WebSocket-based messaging with markdown card support",
   "keywords": [
@@ -34,7 +34,7 @@
     "channel": {
       "id": "feishu",
       "label": "Feishu",
-      "selectionLabel": "Feishu (飞书/Lark)",
+      "selectionLabel": "Feishu (飞书)",
       "docsPath": "/channels/feishu",
       "docsLabel": "feishu",
       "blurb": "Enterprise messaging platform with Bot API.",
@@ -44,6 +44,9 @@
       ],
       "order": 81,
       "quickstartAllowFrom": true
+    },
+    "install": {
+      "localPath": "."
     }
   },
   "scripts": {
