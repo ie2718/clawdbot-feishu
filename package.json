@@ -1,6 +1,6 @@
 {
   "name": "@ie2718/clawdbot-feishu",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "type": "module",
   "description": "Clawdbot Feishu (Lark) channel plugin - WebSocket-based messaging with markdown card support",
   "keywords": [

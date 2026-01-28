@@ -5,7 +5,7 @@ import { feishuDock, feishuPlugin } from "./src/channel.js";
 import { setFeishuRuntime } from "./src/runtime.js";
 
 const plugin = {
-  id: "feishu",
+  id: "clawdbot-feishu",
   name: "Feishu",
   description: "Feishu (Lark) channel plugin",
   configSchema: emptyPluginConfigSchema(),
