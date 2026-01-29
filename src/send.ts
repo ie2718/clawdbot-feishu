@@ -1,8 +1,16 @@
 import type { ClawdbotConfig } from "clawdbot/plugin-sdk";
 
 import { resolveFeishuAccount } from "./accounts.js";
-import { sendMessage, replyMessage, type FeishuFetch } from "./api.js";
-import type { FeishuReceiveIdType } from "./types.js";
+import { 
+  sendMessage, 
+  replyMessage, 
+  uploadImage, 
+  downloadImage, 
+  uploadFile, 
+  downloadFile,
+  type FeishuFetch,
+} from "./api.js";
+import type { FeishuReceiveIdType, FeishuImageType, FeishuFileType } from "./types.js";
 
 export type FeishuSendOptions = {
   appId?: string;
@@ -45,10 +53,18 @@ function resolveSendContext(options: FeishuSendOptions): {
 }
 
 /**
+ * Normalize a Feishu target by stripping channel prefix.
+ * Handles targets like "feishu:oc_xxx", "lark:ou_xxx", "fs:xxx"
+ */
+function normalizeTarget(target: string): string {
+  return target.trim().replace(/^(feishu|lark|fs):/i, "");
+}
+
+/**
  * Determine the receive_id_type based on the target format.
  */
 function inferReceiveIdType(target: string): FeishuReceiveIdType {
-  const trimmed = target.trim();
+  const trimmed = normalizeTarget(target);
   // chat_id starts with "oc_"
   if (trimmed.startsWith("oc_")) return "chat_id";
   // open_id starts with "ou_"
@@ -112,7 +128,8 @@ export async function sendMessageFeishu(
     return { ok: false, error: "No recipient provided" };
   }
 
-  const receiveIdType = options.receiveIdType ?? inferReceiveIdType(to);
+  const normalizedTo = normalizeTarget(to);
+  const receiveIdType = options.receiveIdType ?? inferReceiveIdType(normalizedTo);
 
   // Build interactive card message content for markdown support
   // Include @mention when replying to a specific message
@@ -139,7 +156,7 @@ export async function sendMessageFeishu(
     const response = await sendMessage(
       appId,
       appSecret,
-      { receive_id: to.trim(), msg_type: "interactive", content },
+      { receive_id: normalizedTo, msg_type: "interactive", content },
       receiveIdType,
       { fetch: fetcher },
     );
@@ -178,14 +195,15 @@ export async function sendImageFeishu(
     return { ok: false, error: "No image key provided" };
   }
 
-  const receiveIdType = options.receiveIdType ?? inferReceiveIdType(to);
+  const normalizedTo = normalizeTarget(to);
+  const receiveIdType = options.receiveIdType ?? inferReceiveIdType(normalizedTo);
   const content = JSON.stringify({ image_key: imageKey.trim() });
 
   try {
     const response = await sendMessage(
       appId,
       appSecret,
-      { receive_id: to.trim(), msg_type: "image", content },
+      { receive_id: normalizedTo, msg_type: "image", content },
       receiveIdType,
       { fetch: fetcher },
     );
@@ -198,4 +216,249 @@ export async function sendImageFeishu(
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Image Upload/Download
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type FeishuUploadResult = {
+  ok: boolean;
+  imageKey?: string;
+  fileKey?: string;
+  error?: string;
+};
+
+export type FeishuDownloadResult = {
+  ok: boolean;
+  data?: ArrayBuffer;
+  contentType?: string;
+  fileName?: string;
+  error?: string;
+};
+
+/**
+ * Upload an image to Feishu and get an image_key.
+ * The image_key can then be used to send image messages.
+ */
+export async function uploadImageFeishu(
+  imageData: Buffer | ArrayBuffer | Blob,
+  options: FeishuSendOptions & { imageType?: FeishuImageType } = {},
+): Promise<FeishuUploadResult> {
+  const { appId, appSecret, fetcher } = resolveSendContext(options);
+
+  if (!appId || !appSecret) {
+    return { ok: false, error: "No Feishu app credentials configured" };
+  }
+
+  try {
+    const response = await uploadImage(
+      appId,
+      appSecret,
+      imageData,
+      options.imageType ?? "message",
+      { fetch: fetcher },
+    );
+
+    if (response.code === 0 && response.data?.image_key) {
+      return { ok: true, imageKey: response.data.image_key };
+    }
+
+    return { ok: false, error: response.msg ?? "Failed to upload image" };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Download an image from Feishu using its image_key.
+ */
+export async function downloadImageFeishu(
+  imageKey: string,
+  options: FeishuSendOptions = {},
+): Promise<FeishuDownloadResult> {
+  const { appId, appSecret, fetcher } = resolveSendContext(options);
+
+  if (!appId || !appSecret) {
+    return { ok: false, error: "No Feishu app credentials configured" };
+  }
+
+  if (!imageKey?.trim()) {
+    return { ok: false, error: "No image key provided" };
+  }
+
+  try {
+    const result = await downloadImage(
+      appId,
+      appSecret,
+      imageKey.trim(),
+      { fetch: fetcher },
+    );
+
+    return { ok: true, data: result.data, contentType: result.contentType };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// File Upload/Download
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Upload a file to Feishu and get a file_key.
+ * The file_key can then be used to send file messages.
+ */
+export async function uploadFileFeishu(
+  fileData: Buffer | ArrayBuffer | Blob,
+  fileName: string,
+  fileType: FeishuFileType,
+  options: FeishuSendOptions = {},
+): Promise<FeishuUploadResult> {
+  const { appId, appSecret, fetcher } = resolveSendContext(options);
+
+  if (!appId || !appSecret) {
+    return { ok: false, error: "No Feishu app credentials configured" };
+  }
+
+  try {
+    const response = await uploadFile(
+      appId,
+      appSecret,
+      fileData,
+      fileName,
+      fileType,
+      { fetch: fetcher },
+    );
+
+    if (response.code === 0 && response.data?.file_key) {
+      return { ok: true, fileKey: response.data.file_key };
+    }
+
+    return { ok: false, error: response.msg ?? "Failed to upload file" };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Download a file from Feishu using its file_key.
+ */
+export async function downloadFileFeishu(
+  fileKey: string,
+  options: FeishuSendOptions = {},
+): Promise<FeishuDownloadResult> {
+  const { appId, appSecret, fetcher } = resolveSendContext(options);
+
+  if (!appId || !appSecret) {
+    return { ok: false, error: "No Feishu app credentials configured" };
+  }
+
+  if (!fileKey?.trim()) {
+    return { ok: false, error: "No file key provided" };
+  }
+
+  try {
+    const result = await downloadFile(
+      appId,
+      appSecret,
+      fileKey.trim(),
+      { fetch: fetcher },
+    );
+
+    return { 
+      ok: true, 
+      data: result.data, 
+      contentType: result.contentType,
+      fileName: result.fileName,
+    };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Send a file message to a Feishu user or chat.
+ * Requires uploading file first via uploadFileFeishu, then sending with file_key.
+ */
+export async function sendFileFeishu(
+  to: string,
+  fileKey: string,
+  options: FeishuSendOptions = {},
+): Promise<FeishuSendResult> {
+  const { appId, appSecret, fetcher } = resolveSendContext(options);
+
+  if (!appId || !appSecret) {
+    return { ok: false, error: "No Feishu app credentials configured" };
+  }
+
+  if (!to?.trim()) {
+    return { ok: false, error: "No recipient provided" };
+  }
+
+  if (!fileKey?.trim()) {
+    return { ok: false, error: "No file key provided" };
+  }
+
+  const normalizedTo = normalizeTarget(to);
+  const receiveIdType = options.receiveIdType ?? inferReceiveIdType(normalizedTo);
+  const content = JSON.stringify({ file_key: fileKey.trim() });
+
+  try {
+    const response = await sendMessage(
+      appId,
+      appSecret,
+      { receive_id: normalizedTo, msg_type: "file", content },
+      receiveIdType,
+      { fetch: fetcher },
+    );
+
+    if (response.code === 0 && response.data) {
+      return { ok: true, messageId: response.data.message_id };
+    }
+
+    return { ok: false, error: response.msg ?? "Failed to send file" };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Upload an image and send it in one operation.
+ * Convenience function that combines uploadImageFeishu and sendImageFeishu.
+ */
+export async function uploadAndSendImageFeishu(
+  to: string,
+  imageData: Buffer | ArrayBuffer | Blob,
+  options: FeishuSendOptions & { imageType?: FeishuImageType } = {},
+): Promise<FeishuSendResult> {
+  // First upload the image
+  const uploadResult = await uploadImageFeishu(imageData, options);
+  if (!uploadResult.ok || !uploadResult.imageKey) {
+    return { ok: false, error: uploadResult.error ?? "Failed to upload image" };
+  }
+
+  // Then send the image message
+  return sendImageFeishu(to, uploadResult.imageKey, options);
+}
+
+/**
+ * Upload a file and send it in one operation.
+ * Convenience function that combines uploadFileFeishu and sendFileFeishu.
+ */
+export async function uploadAndSendFileFeishu(
+  to: string,
+  fileData: Buffer | ArrayBuffer | Blob,
+  fileName: string,
+  fileType: FeishuFileType,
+  options: FeishuSendOptions = {},
+): Promise<FeishuSendResult> {
+  // First upload the file
+  const uploadResult = await uploadFileFeishu(fileData, fileName, fileType, options);
+  if (!uploadResult.ok || !uploadResult.fileKey) {
+    return { ok: false, error: uploadResult.error ?? "Failed to upload file" };
+  }
+
+  // Then send the file message
+  return sendFileFeishu(to, uploadResult.fileKey, options);
 }

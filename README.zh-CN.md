@@ -42,18 +42,31 @@ npm install @ie2718-moltbot/feishu
 | 权限 | 说明 |
 |------|------|
 | `im:message` | 发送消息 |
-| `im:message.receive_v1` | 接收消息（事件订阅） |
 | `im:chat` | 获取群组信息 |
+| `im:message:send_as_bot` | 以应用的身份发消息
 | `contact:user.id:readonly` | 读取用户信息（可选） |
 
-### 3. 启用 WebSocket 事件订阅
+直接批量导入
+```json
+{
+  "scopes": {
+    "tenant": [
+      "contact:user.id:readonly",
+      "im:chat",
+      "im:message",
+      "im:message.group_at_msg:readonly",
+      "im:message.group_msg",
+      "im:message.p2p_msg:readonly",
+      "im:message:send_as_bot",
+      "im:resource"
+    ],
+    "user": []
+  }
+}
+```
 
-1. 进入 **事件与回调** 页面
-2. 将订阅方式设置为 **长连接**（WebSocket）
-3. 添加事件：`im.message.receive_v1`（接收消息）
-4. 点击保存
 
-### 4. 安装插件并配置凭证
+### 3. 安装插件并配置凭证
 
 ```bash
 clawdbot plugins install @ie2718-moltbot/feishu
@@ -91,15 +104,7 @@ clawdbot config set channels.feishu.appSecret "xxxxxxxxxxxxxxxxxxxxxxxx"
   }
 }
 ```
-
-**方式 C：环境变量**
-
-```bash
-export FEISHU_APP_ID=cli_xxxxxxxxxx
-export FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-**方式 D：交互式引导配置**
+**方式 C：交互式引导配置**
 
 ```bash
 clawdbot onboard
@@ -108,6 +113,25 @@ clawdbot onboard
 引导向导会引导你完成配置：
 
 ![引导配置](resource/images/onboard-prompt.png)
+
+### 4. 启用 WebSocket 事件订阅
+
+1. 进入 **事件与回调** 页面
+2. 将订阅方式设置为 **长连接**（WebSocket）
+3. 添加事件：`im.message.receive_v1`（接收消息）
+4. 开通 **接收群聊中@机器人消息事件**、**读取用户发给机器人的单聊消息**、**获取群组中所有消息（敏感权限）** （如果需要群聊）
+5. 点击保存
+
+### 5. 发布机器人
+1. 创建版本并发布，在飞书客户端会收到小助手审核通过消息，打开应用即可对话
+2. 如果需要群聊，按以下步骤操作
+  - 打开目标群聊窗口。
+  - 点击右上角的 “...”（设置/群设置）。
+  - 找到 “群机器人” 选项（通常在群公告下方）。
+  - 点击 “添加机器人”。
+  - 在搜索框中输入你的机器人名称。
+  - 点击机器人名称后的 “添加” 按钮即可。
+  - @ 机器人即可对话
 
 ### 5. 启动网关
 
@@ -166,6 +190,12 @@ clawdbot message send --channel feishu --target oc_xxx --message "大家好！"
 clawdbot channels status --probe
 ```
 
+## 版本更新
+
+删除clawdbot的.clawdbot/extensions/feishu，然后clawdbot onboard
+- 选择Download from npm方式安装
+- 或者通过clawdbot plugins install 方式安装，然后选择Use local plugin path
+
 ## 访问控制
 
 ### 私聊策略选项
@@ -192,6 +222,10 @@ clawdbot pairing list feishu
 # 批准配对请求
 clawdbot pairing approve feishu <CODE>
 ```
+
+## Troubleshooting
+
+- **Duplicate plugin id warning**: If you see `duplicate plugin id detected`, you have multiple Feishu plugin entries loaded (for example, both a local plugin path and a downloaded extension in `~/.clawdbot/extensions/feishu`). Keep only one installation and restart `clawdbot`.
 
 ## 文档
 

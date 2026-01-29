@@ -164,3 +164,60 @@ export type FeishuSendMessageResponse = {
 
 /** Receive ID type for message sending. */
 export type FeishuReceiveIdType = "open_id" | "user_id" | "union_id" | "email" | "chat_id";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Image API Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Image type for upload. */
+export type FeishuImageType = "message" | "avatar";
+
+/** Upload image response. */
+export type FeishuUploadImageResponse = {
+  image_key: string;
+};
+
+/** Image info from download. */
+export type FeishuImageInfo = {
+  data: Buffer | ArrayBuffer;
+  contentType?: string;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// File API Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** File type for upload. */
+export type FeishuFileType = "opus" | "mp4" | "pdf" | "doc" | "xls" | "ppt" | "stream";
+
+/** Upload file response. */
+export type FeishuUploadFileResponse = {
+  file_key: string;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Streaming/Update Message Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Update message card request params. */
+export type FeishuUpdateMessageParams = {
+  content: string; // JSON string of card content
+};
+
+/** Update message response. */
+export type FeishuUpdateMessageResponse = {
+  message_id: string;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Extended Bot Info (includes open_id for group mention detection)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Extended bot info with all available fields. */
+export type FeishuExtendedBotInfo = {
+  app_name: string;
+  avatar_url?: string;
+  open_id?: string;
+  /** Bot's unique identifier for mention detection in groups */
+  bot_open_id?: string;
+};

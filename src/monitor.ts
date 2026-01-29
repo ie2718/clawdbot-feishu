@@ -14,8 +14,9 @@ import type {
   FeishuMessageEvent,
   FeishuReceiveIdType,
   ResolvedFeishuAccount,
+  FeishuBotInfo,
 } from "./types.js";
-import { sendMessage, replyMessage } from "./api.js";
+import { sendMessage, replyMessage, updateMessageCard, uploadImage, downloadImage } from "./api.js";
 import { getFeishuRuntime } from "./runtime.js";
 
 export type FeishuRuntimeEnv = {
@@ -31,6 +32,8 @@ export type FeishuMonitorOptions = {
   /** Custom webhook path for receiving events. */
   webhookPath?: string;
   statusSink?: (patch: { lastInboundAt?: number; lastOutboundAt?: number }) => void;
+  /** Bot info for mention detection in groups */
+  botInfo?: FeishuBotInfo;
 };
 
 export type FeishuMonitorResult = {
@@ -40,20 +43,30 @@ export type FeishuMonitorResult = {
 // Feishu card markdown content limit (slightly lower than text to account for JSON overhead)
 const FEISHU_CARD_CONTENT_LIMIT = 3800;
 const DEFAULT_MEDIA_MAX_MB = 20;
+// Minimum interval between streaming updates (in ms) to avoid rate limiting
+const STREAMING_UPDATE_INTERVAL_MS = 300;
+// Streaming indicator shown while generating
+const STREAMING_INDICATOR = " ▌";
 
 /**
  * Build a Feishu interactive card with markdown content.
  * Card messages support rich markdown formatting in Feishu.
  * @param content - The markdown content to display
  * @param mentionUserId - Optional user ID to @mention at the beginning of the message
+ * @param isStreaming - If true, adds a streaming indicator (cursor) at the end
  */
-function buildMarkdownCard(content: string, mentionUserId?: string): string {
+function buildMarkdownCard(content: string, mentionUserId?: string, isStreaming = false): string {
   // Build the markdown content with optional @mention
   // Feishu @mention syntax: <at id=user_id></at>
   let markdownContent = content;
   if (mentionUserId?.trim()) {
     // Add @mention at the beginning of the message
     markdownContent = `<at id=${mentionUserId}></at> ${content}`;
+  }
+
+  // Add streaming cursor indicator if streaming
+  if (isStreaming) {
+    markdownContent += STREAMING_INDICATOR;
   }
 
   const card = {
@@ -69,6 +82,117 @@ function buildMarkdownCard(content: string, mentionUserId?: string): string {
     ],
   };
   return JSON.stringify(card);
+}
+
+/**
+ * Check if the bot is mentioned in a group message.
+ * Uses multiple detection methods for reliability.
+ */
+function isBotMentioned(
+  event: FeishuMessageEvent,
+  botInfo?: FeishuBotInfo,
+): boolean {
+  const mentions = event.message.mentions ?? [];
+  
+  // Check for @all mention
+  if (mentions.some((m) => m.name === "@_all")) {
+    return true;
+  }
+  
+  // Check if bot is directly mentioned by open_id
+  if (botInfo?.open_id) {
+    if (mentions.some((m) => m.id.open_id === botInfo.open_id)) {
+      return true;
+    }
+  }
+  
+  // Fallback: check if any mention has empty id (sometimes bot mentions appear this way)
+  // or check mention key patterns that indicate bot mention
+  for (const mention of mentions) {
+    // Bot mentions often have a specific key format
+    if (mention.key && mention.name) {
+      // If the mention name matches common bot patterns or the message content
+      // starts with the mention, it's likely targeting the bot
+      const content = event.message.content;
+      try {
+        const parsed = JSON.parse(content);
+        const text = parsed.text ?? "";
+        // Check if the mention appears at the start of the message
+        if (text.startsWith(`@${mention.name}`) || text.startsWith(mention.key)) {
+          return true;
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Extract image keys from a message event.
+ */
+function extractImageKeys(event: FeishuMessageEvent): string[] {
+  const imageKeys: string[] = [];
+  
+  if (event.message.message_type === "image") {
+    try {
+      const content = JSON.parse(event.message.content);
+      if (content.image_key) {
+        imageKeys.push(content.image_key);
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }
+  
+  // Check for images in post messages (rich text)
+  if (event.message.message_type === "post") {
+    try {
+      const content = JSON.parse(event.message.content);
+      // Post content has a nested structure with content arrays
+      const traverseContent = (items: unknown[]): void => {
+        for (const item of items) {
+          if (item && typeof item === "object") {
+            const obj = item as Record<string, unknown>;
+            if (obj.tag === "img" && obj.image_key) {
+              imageKeys.push(obj.image_key as string);
+            }
+            if (Array.isArray(obj.content)) {
+              traverseContent(obj.content);
+            }
+          }
+        }
+      };
+      if (content.content && Array.isArray(content.content)) {
+        for (const paragraph of content.content) {
+          if (Array.isArray(paragraph)) {
+            traverseContent(paragraph);
+          }
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }
+  
+  return imageKeys;
+}
+
+/**
+ * Extract file key from a message event.
+ */
+function extractFileKey(event: FeishuMessageEvent): string | undefined {
+  if (event.message.message_type === "file") {
+    try {
+      const content = JSON.parse(event.message.content);
+      return content.file_key;
+    } catch {
+      // Ignore parse errors
+    }
+  }
+  return undefined;
 }
 
 type FeishuCoreRuntime = ReturnType<typeof getFeishuRuntime>;
@@ -112,19 +236,67 @@ async function processMessageEvent(
   core: FeishuCoreRuntime,
   mediaMaxMb: number,
   statusSink?: (patch: { lastInboundAt?: number; lastOutboundAt?: number }) => void,
+  botInfo?: FeishuBotInfo,
 ): Promise<void> {
   const { sender, message } = event;
 
-  // Parse message content
+  // Parse message content based on message type
   let textContent = "";
+  let imageKeys: string[] = [];
+  let fileKey: string | undefined;
+  
   try {
     const content = JSON.parse(message.content);
-    textContent = content.text ?? "";
+    
+    if (message.message_type === "text") {
+      textContent = content.text ?? "";
+    } else if (message.message_type === "image") {
+      // Image message - extract image key
+      imageKeys = extractImageKeys(event);
+      textContent = "[Image]"; // Placeholder text for image messages
+    } else if (message.message_type === "file") {
+      // File message - extract file key
+      fileKey = extractFileKey(event);
+      textContent = content.file_name ? `[File: ${content.file_name}]` : "[File]";
+    } else if (message.message_type === "post") {
+      // Rich text message - extract text and images
+      imageKeys = extractImageKeys(event);
+      // Extract text from post content
+      const extractText = (items: unknown[]): string => {
+        let result = "";
+        for (const item of items) {
+          if (item && typeof item === "object") {
+            const obj = item as Record<string, unknown>;
+            if (obj.tag === "text" && typeof obj.text === "string") {
+              result += obj.text;
+            } else if (obj.tag === "at" && typeof obj.user_name === "string") {
+              result += `@${obj.user_name}`;
+            }
+          }
+        }
+        return result;
+      };
+      if (content.content && Array.isArray(content.content)) {
+        for (const paragraph of content.content) {
+          if (Array.isArray(paragraph)) {
+            textContent += extractText(paragraph);
+          }
+        }
+      }
+      // Fallback to title if no content extracted
+      if (!textContent && content.title) {
+        textContent = content.title;
+      }
+    } else {
+      // Other message types - try to extract text
+      textContent = content.text ?? "";
+    }
   } catch {
     // Ignore parse errors
   }
 
-  if (!textContent.trim()) return;
+  // Skip empty messages (but allow image-only messages)
+  if (!textContent.trim() && imageKeys.length === 0 && !fileKey) return;
 
   const isGroup = message.chat_type === "group";
   const chatId = message.chat_id;
@@ -236,9 +408,7 @@ async function processMessageEvent(
     // Check if mention is required
     const requireMention = groupConfig?.requireMention !== false;
     if (requireMention) {
-      const hasMention = message.mentions?.some(
-        (m) => m.id.open_id === account.appId || m.name === "@_all",
-      );
+      const hasMention = isBotMentioned(event, botInfo);
       if (!hasMention) {
         logVerbose(core, runtime, `Ignored feishu group message (no mention)`);
         return;
@@ -283,6 +453,15 @@ async function processMessageEvent(
     body: rawBody,
   });
 
+  // Build media attachments if any
+  const attachments: Array<{ type: string; key: string }> = [];
+  for (const imgKey of imageKeys) {
+    attachments.push({ type: "image", key: imgKey });
+  }
+  if (fileKey) {
+    attachments.push({ type: "file", key: fileKey });
+  }
+
   const ctxPayload = core.channel.reply.finalizeInboundContext({
     Body: body,
     RawBody: rawBody,
@@ -301,6 +480,12 @@ async function processMessageEvent(
     MessageSid: messageId,
     OriginatingChannel: "feishu",
     OriginatingTo: `feishu:${chatId}`,
+    // Include media attachments if any
+    ...(attachments.length > 0 ? { Attachments: attachments } : {}),
+    // Include image keys for downstream processing
+    ...(imageKeys.length > 0 ? { ImageKeys: imageKeys } : {}),
+    // Include file key for downstream processing
+    ...(fileKey ? { FileKey: fileKey } : {}),
   });
 
   await core.channel.session.recordInboundSession({
@@ -412,18 +597,157 @@ async function deliverFeishuReply(params: {
 }
 
 /**
+ * Streaming delivery context for progressive message updates.
+ */
+type StreamingContext = {
+  messageId: string | null;
+  lastUpdateTime: number;
+  accumulatedText: string;
+  mentionUserId?: string;
+  isFirstChunk: boolean;
+};
+
+/**
+ * Deliver Feishu reply with streaming support.
+ * Sends an initial message and progressively updates it with new content.
+ */
+async function deliverFeishuReplyStreaming(params: {
+  account: ResolvedFeishuAccount;
+  receiveId: string;
+  receiveIdType: FeishuReceiveIdType;
+  /** Sender's user ID for @mention in replies */
+  senderId?: string;
+  /** Original message ID to reply to (for quote/reference) */
+  replyToMessageId?: string;
+  runtime: FeishuRuntimeEnv;
+  core: FeishuCoreRuntime;
+  config: ClawdbotConfig;
+  statusSink?: (patch: { lastInboundAt?: number; lastOutboundAt?: number }) => void;
+  tableMode?: MarkdownTableMode;
+  /** Stream iterator that yields text chunks */
+  textStream: AsyncIterable<string>;
+}): Promise<void> {
+  const { account, receiveId, receiveIdType, senderId, replyToMessageId, runtime, core, config, statusSink, textStream } = params;
+  const tableMode = params.tableMode ?? "code";
+
+  const ctx: StreamingContext = {
+    messageId: null,
+    lastUpdateTime: 0,
+    accumulatedText: "",
+    mentionUserId: senderId,
+    isFirstChunk: true,
+  };
+
+  try {
+    for await (const chunk of textStream) {
+      ctx.accumulatedText += chunk;
+
+      const now = Date.now();
+      const timeSinceLastUpdate = now - ctx.lastUpdateTime;
+
+      // Rate limit updates to avoid API throttling
+      if (timeSinceLastUpdate < STREAMING_UPDATE_INTERVAL_MS) {
+        continue;
+      }
+
+      // Convert markdown tables for display
+      const displayText = core.channel.text.convertMarkdownTables(ctx.accumulatedText, tableMode);
+
+      try {
+        if (ctx.isFirstChunk) {
+          // Send initial message (with streaming indicator)
+          const content = buildMarkdownCard(displayText, ctx.mentionUserId, true);
+
+          if (replyToMessageId) {
+            const response = await replyMessage(
+              account.appId,
+              account.appSecret,
+              replyToMessageId,
+              { msg_type: "interactive", content },
+            );
+            ctx.messageId = response.data?.message_id ?? null;
+          } else {
+            const response = await sendMessage(
+              account.appId,
+              account.appSecret,
+              { receive_id: receiveId, msg_type: "interactive", content },
+              receiveIdType,
+            );
+            ctx.messageId = response.data?.message_id ?? null;
+          }
+
+          ctx.isFirstChunk = false;
+          ctx.lastUpdateTime = now;
+          statusSink?.({ lastOutboundAt: now });
+        } else if (ctx.messageId) {
+          // Update existing message with new content (with streaming indicator)
+          const content = buildMarkdownCard(displayText, ctx.mentionUserId, true);
+          await updateMessageCard(account.appId, account.appSecret, ctx.messageId, content);
+          ctx.lastUpdateTime = now;
+          statusSink?.({ lastOutboundAt: now });
+        }
+      } catch (err) {
+        // Log error but continue streaming
+        runtime.error?.(`[feishu] streaming update failed: ${String(err)}`);
+      }
+    }
+
+    // Final update: remove streaming indicator
+    if (ctx.messageId && ctx.accumulatedText) {
+      const finalText = core.channel.text.convertMarkdownTables(ctx.accumulatedText, tableMode);
+      const content = buildMarkdownCard(finalText, ctx.mentionUserId, false);
+      try {
+        await updateMessageCard(account.appId, account.appSecret, ctx.messageId, content);
+        statusSink?.({ lastOutboundAt: Date.now() });
+      } catch (err) {
+        runtime.error?.(`[feishu] final streaming update failed: ${String(err)}`);
+      }
+    } else if (!ctx.messageId && ctx.accumulatedText) {
+      // Never sent initial message, send final content now
+      const finalText = core.channel.text.convertMarkdownTables(ctx.accumulatedText, tableMode);
+      const content = buildMarkdownCard(finalText, ctx.mentionUserId, false);
+      try {
+        if (replyToMessageId) {
+          await replyMessage(
+            account.appId,
+            account.appSecret,
+            replyToMessageId,
+            { msg_type: "interactive", content },
+          );
+        } else {
+          await sendMessage(
+            account.appId,
+            account.appSecret,
+            { receive_id: receiveId, msg_type: "interactive", content },
+            receiveIdType,
+          );
+        }
+        statusSink?.({ lastOutboundAt: Date.now() });
+      } catch (err) {
+        runtime.error?.(`[feishu] final message send failed: ${String(err)}`);
+      }
+    }
+  } catch (err) {
+    runtime.error?.(`[feishu] streaming delivery failed: ${String(err)}`);
+    throw err;
+  }
+}
+
+/**
  * Start monitoring Feishu events using WebSocket long connection.
  */
 export async function monitorFeishuProvider(
   options: FeishuMonitorOptions,
 ): Promise<FeishuMonitorResult> {
-  const { account, config, runtime, abortSignal, statusSink } = options;
+  const { account, config, runtime, abortSignal, statusSink, botInfo } = options;
 
   const core = getFeishuRuntime();
   const effectiveMediaMaxMb = account.config.mediaMaxMb ?? DEFAULT_MEDIA_MAX_MB;
 
   let stopped = false;
   let wsClient: Lark.WSClient | null = null;
+  // Store bot info for mention detection (can be updated from probe)
+  let currentBotInfo: FeishuBotInfo | undefined = botInfo;
 
   const stop = () => {
     stopped = true;
@@ -462,6 +786,7 @@ export async function monitorFeishuProvider(
           core,
           effectiveMediaMaxMb,
           statusSink,
+          currentBotInfo,
         );
       } catch (err) {
         runtime.error?.(`[${account.accountId}] Feishu event handler failed: ${String(err)}`);

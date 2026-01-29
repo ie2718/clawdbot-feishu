@@ -4,6 +4,10 @@ import type {
   ChannelPlugin,
   ClawdbotConfig,
 } from "clawdbot/plugin-sdk";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   applyAccountNameToChannelSection,
   DEFAULT_ACCOUNT_ID,
@@ -23,8 +27,9 @@ import {
 } from "./accounts.js";
 import { feishuOnboardingAdapter } from "./onboarding.js";
 import { probeFeishu } from "./probe.js";
-import { sendMessageFeishu } from "./send.js";
+import { sendMessageFeishu, uploadAndSendFileFeishu, uploadAndSendImageFeishu } from "./send.js";
 import { collectFeishuStatusIssues } from "./status-issues.js";
+import type { FeishuFileType } from "./types.js";
 
 const meta = {
   id: "feishu",
@@ -44,12 +49,100 @@ function normalizeFeishuMessagingTarget(raw: string): string | undefined {
   return trimmed.replace(/^(feishu|lark|fs):/i, "");
 }
 
+const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]);
+const FILE_TYPE_MAP: Record<string, FeishuFileType> = {
+  ".opus": "opus",
+  ".mp4": "mp4",
+  ".pdf": "pdf",
+  ".doc": "doc",
+  ".docx": "doc",
+  ".xls": "xls",
+  ".xlsx": "xls",
+  ".ppt": "ppt",
+  ".pptx": "ppt",
+};
+
+function normalizeMediaPath(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("file://")) {
+    return fileURLToPath(trimmed);
+  }
+  if (trimmed.startsWith("~/")) {
+    return path.join(os.homedir(), trimmed.slice(2));
+  }
+  return trimmed;
+}
+
+function isRemoteUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
+function resolveFileType(extension: string): FeishuFileType {
+  return FILE_TYPE_MAP[extension.toLowerCase()] ?? "stream";
+}
+
+type MediaSource = {
+  data: Buffer;
+  fileName: string;
+  isImage: boolean;
+  fileType?: FeishuFileType;
+};
+
+async function expandMediaPattern(raw: string): Promise<string[]> {
+  const normalized = normalizeMediaPath(raw);
+  const match = normalized.match(/^(.*)\/\*\.\{([a-zA-Z0-9,]+)\}$/);
+  if (!match) return [normalized];
+  const dir = match[1];
+  const extensions = new Set(
+    match[2]
+      .split(",")
+      .map((ext) => `.${ext.toLowerCase()}`),
+  );
+  const entries = await fs.readdir(dir);
+  return entries
+    .filter((entry) => extensions.has(path.extname(entry).toLowerCase()))
+    .map((entry) => path.join(dir, entry));
+}
+
+async function loadMediaSource(mediaUrl: string): Promise<MediaSource> {
+  if (isRemoteUrl(mediaUrl)) {
+    const response = await fetch(mediaUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch media: ${response.status} ${response.statusText}`);
+    }
+    const contentType = response.headers.get("content-type") ?? "";
+    const data = Buffer.from(await response.arrayBuffer());
+    const urlPath = new URL(mediaUrl).pathname;
+    const fileName = path.basename(urlPath || "file");
+    const extension = path.extname(fileName).toLowerCase();
+    const isImage = contentType.startsWith("image/") || IMAGE_EXTENSIONS.has(extension);
+    return {
+      data,
+      fileName: fileName || "file",
+      isImage,
+      fileType: isImage ? undefined : resolveFileType(extension),
+    };
+  }
+
+  const localPath = normalizeMediaPath(mediaUrl);
+  const data = await fs.readFile(localPath);
+  const fileName = path.basename(localPath);
+  const extension = path.extname(fileName).toLowerCase();
+  const isImage = IMAGE_EXTENSIONS.has(extension);
+  return {
+    data,
+    fileName,
+    isImage,
+    fileType: isImage ? undefined : resolveFileType(extension),
+  };
+}
+
 export const feishuDock: ChannelDock = {
   id: "feishu",
   capabilities: {
     chatTypes: ["direct", "group"],
     media: true,
-    blockStreaming: true,
+    blockStreaming: false,  // Now supports streaming via message card updates
   },
   outbound: { textChunkLimit: 4000 },
   config: {
@@ -83,7 +176,7 @@ export const feishuPlugin: ChannelPlugin<ResolvedFeishuAccount> = {
     threads: false,
     polls: false,
     nativeCommands: false,
-    blockStreaming: true,
+    blockStreaming: false,  // Now supports streaming via message card updates
   },
   reload: { configPrefixes: ["channels.feishu"] },
   config: {
@@ -340,18 +433,86 @@ export const feishuPlugin: ChannelPlugin<ResolvedFeishuAccount> = {
       };
     },
     sendMedia: async ({ to, text, mediaUrl, accountId, cfg }) => {
-      // For now, just send text with media URL as link
-      // Full media upload requires /im/v1/images endpoint
-      const messageText = mediaUrl ? `${text}\n\n${mediaUrl}` : text;
-      const result = await sendMessageFeishu(to, messageText, {
-        accountId: accountId ?? undefined,
-        cfg: cfg as ClawdbotConfig,
-      });
+      const messageText = text?.trim() ?? "";
+      const mediaInputs = (mediaUrl ? [mediaUrl] : []).filter((entry) =>
+        Boolean(entry && entry.trim()),
+      );
+      const expandedMedia: string[] = [];
+      for (const input of mediaInputs) {
+        const expanded = await expandMediaPattern(input);
+        expandedMedia.push(...expanded);
+      }
+
+      if (!messageText && expandedMedia.length === 0) {
+        return {
+          channel: "feishu",
+          ok: false,
+          messageId: "",
+          error: new Error("No message text or media provided"),
+        };
+      }
+
+      let lastMessageId = "";
+      let lastError: Error | undefined;
+      let anySuccess = false;
+
+      // Send text first (if provided)
+      if (messageText) {
+        const textResult = await sendMessageFeishu(to, messageText, {
+          accountId: accountId ?? undefined,
+          cfg: cfg as ClawdbotConfig,
+        });
+        if (textResult.ok) {
+          anySuccess = true;
+          lastMessageId = textResult.messageId ?? "";
+        } else if (textResult.error) {
+          lastError = new Error(textResult.error);
+        }
+      }
+
+      // Send media attachments
+      for (const media of expandedMedia) {
+        try {
+          const source = await loadMediaSource(media);
+          if (source.isImage) {
+            const mediaResult = await uploadAndSendImageFeishu(to, source.data, {
+              accountId: accountId ?? undefined,
+              cfg: cfg as ClawdbotConfig,
+            });
+            if (mediaResult.ok) {
+              anySuccess = true;
+              lastMessageId = mediaResult.messageId ?? lastMessageId;
+            } else if (mediaResult.error) {
+              lastError = new Error(mediaResult.error);
+            }
+          } else {
+            const mediaResult = await uploadAndSendFileFeishu(
+              to,
+              source.data,
+              source.fileName,
+              source.fileType ?? "stream",
+              {
+                accountId: accountId ?? undefined,
+                cfg: cfg as ClawdbotConfig,
+              },
+            );
+            if (mediaResult.ok) {
+              anySuccess = true;
+              lastMessageId = mediaResult.messageId ?? lastMessageId;
+            } else if (mediaResult.error) {
+              lastError = new Error(mediaResult.error);
+            }
+          }
+        } catch (err) {
+          lastError = new Error(err instanceof Error ? err.message : String(err));
+        }
+      }
+
       return {
         channel: "feishu",
-        ok: result.ok,
-        messageId: result.messageId ?? "",
-        error: result.error ? new Error(result.error) : undefined,
+        ok: anySuccess,
+        messageId: lastMessageId,
+        error: !anySuccess && lastError ? lastError : undefined,
       };
     },
   },
@@ -403,10 +564,12 @@ export const feishuPlugin: ChannelPlugin<ResolvedFeishuAccount> = {
     startAccount: async (ctx) => {
       const account = ctx.account;
       let feishuBotLabel = "";
+      let botInfo: { app_name: string; avatar_url?: string; open_id?: string } | undefined;
       try {
         const probe = await probeFeishu(account.appId, account.appSecret, 2500);
         const name = probe.ok ? probe.bot?.app_name?.trim() : null;
         if (name) feishuBotLabel = ` (${name})`;
+        botInfo = probe.bot;
         ctx.setStatus({
           accountId: account.accountId,
           bot: probe.bot,
@@ -423,6 +586,7 @@ export const feishuPlugin: ChannelPlugin<ResolvedFeishuAccount> = {
         abortSignal: ctx.abortSignal,
         webhookPath: account.config.webhookPath,
         statusSink: (patch) => ctx.setStatus({ accountId: ctx.accountId, ...patch }),
+        botInfo,  // Pass bot info for group mention detection
       });
     },
   },
