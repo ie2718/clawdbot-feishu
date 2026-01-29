@@ -19,10 +19,10 @@
 
 ```bash
 # 通过 Clawdbot CLI
-clawdbot plugins install @ie2718/clawdbot-feishu
+clawdbot plugins install @ie2718-moltbot/feishu
 
 # 或通过 npm
-npm install @ie2718/clawdbot-feishu
+npm install @ie2718-moltbot/feishu
 ```
 
 ## 快速开始
